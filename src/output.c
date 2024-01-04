@@ -32,25 +32,30 @@ get_tearing_preference(struct output *output)
 {
 	struct server *server = output->server;
 
+	/* Never allow tearing when disabled */
 	if (rc.allow_tearing == LAB_TEARING_DISABLED) {
 		return false;
 	}
 
+	/* Allows allow tearing when forced */
 	if (rc.allow_tearing == LAB_TEARING_ALWAYS) {
 		return true;
 	}
 
-	struct view *view;
-	bool on_fullscreen = rc.allow_tearing == LAB_TEARING_FULLSCREEN;
+	/* Tearing is only allowed for the output with the active view */
+	if (!server->active_view || server->active_view->output != output) {
+		return false;
+	}
 
-	wl_list_for_each(view, &server->views, link) {
-		if (view->output != output) {
-			continue;
-		}
+	/* If the active view requests tearing, allow it */
+	if (server->active_view->tearing_hint) {
+		return true;
+	}
 
-		if (view->tearing_hint || (on_fullscreen && view->fullscreen)) {
-			return true;
-		}
+	/* If the active view is fullscreen, allow tearing if configured */
+	if (rc.allow_tearing == LAB_TEARING_FULLSCREEN &&
+			server->active_view->fullscreen) {
+		return true;
 	}
 
 	return false;
@@ -97,7 +102,8 @@ output_frame_notify(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	output->wlr_output->pending.tearing_page_flip = get_tearing_preference(output);
+	output->wlr_output->pending.tearing_page_flip =
+		get_tearing_preference(output);
 	lab_wlr_scene_output_commit(output->scene_output);
 
 	struct timespec now = { 0 };
